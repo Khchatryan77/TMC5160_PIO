@@ -2,7 +2,7 @@ from machine import Pin
 import rp2
 from Config import Config
     
-    
+
 class ASM_PIO():
     def __init__(self, Config):
         self.Motors = Config
@@ -23,7 +23,7 @@ class ASM_PIO():
         jmp("loop")
         
         label("end")
-        nop()              # End program    
+        nop()
 
 
     def move_motor(self, steps, dir_val, freq = 400_000):  # move with STEP/DIR
@@ -42,4 +42,18 @@ class ASM_PIO():
     def stop_all(self):
         for sm_id in self.state_machines:
             self.state_machines[sm_id].active(0)
+            
+    def check_motors(self):
+
+        for sm_id, sm in self.state_machines.items():
+            # If any state machine still has data in FIFO or is active, motors are not done
+            if sm.tx_fifo() > 0 or sm.active():
+                return False
+        return True
+
+        
+            
+
+
+
 

@@ -10,6 +10,8 @@ buffer = []
 
 Board_id = 'Hand_1'
 
+done_pin = Pin(11, Pin.OUT)
+
 def uart_handler(uart):
     if uart.any():  
         data = uart.read().decode().strip()  
@@ -38,43 +40,135 @@ y_driver = tmc5160(spi, Motors['Y']['CS_Pin'])
 
     
 x_driver.GCONF()
-x_driver.IHOLD_IRUN(IHOLD= 4, IRUN=12)
-x_driver.CHOPCONF(MRES = 4)
+x_driver.IHOLD_IRUN(IHOLD= 8, IRUN=16)
+x_driver.CHOPCONF(MRES = 8)
 
     
 y_driver.GCONF()
-y_driver.IHOLD_IRUN(IHOLD= 4, IRUN=12)
-y_driver.CHOPCONF(MRES = 4)
+y_driver.IHOLD_IRUN(IHOLD= 8, IRUN=16)
+y_driver.CHOPCONF(MRES = 8)
 
 x_motor_driver = ASM_PIO(x_motor)
 utime.sleep_us(10)
-x_motor_driver.move_motor(steps=800, dir_val=1, freq=30000)
+x_motor_driver.move_motor(steps=400, dir_val=1, freq=70000)
+
 
 y_motor_driver = ASM_PIO(y_motor)
 utime.sleep_us(10)
-y_motor_driver.move_motor(steps=800, dir_val=1, freq=30000)
+y_motor_driver.move_motor(steps=400, dir_val=1, freq=70000)
 
 
 while True:
+    '''
     print('Start_stop_X', x_motor.Start.value())
     print('End_stop_X', x_motor.End.value())
     print('Start_stop_Y', y_motor.Start.value())
     print('End_stop_Y', y_motor.End.value())
+
     
     print('buffer', buffer)
+    '''    
     while len(buffer) > 0:
-        if buffer and buffer[0] == 'move_motors':
-            integer = 1
-            while x_motor.Start.value() == 1:
-                if integer == 1:
+        if buffer and buffer[0] == 'OPEN':
+            integer_x = 1
+            integer_y = 1
+            start_stop_x = 1
+            start_stop_y = 1
+            motor_finished = 1
+            
+            uart_send('Received_Command')
+            start = utime.ticks_ms()
+            while x_motor.Start.value()==1 or y_motor.Start.value() == 1:
+                now = utime.ticks_ms()
+                if integer_x == 1:
                     
-                    x_motor_driver.move_motor(steps=4800, dir_val=1, freq=50000)
-                    y_motor_driver.move_motor(steps=4800, dir_val=1, freq=50000)
+                    x_motor_driver.move_motor(steps=9600, dir_val=1, freq=250000)
                     
-                    integer = 0
+                    integer_x = 0
                     
+                elif integer_y == 1:
+                    
+                    y_motor_driver.move_motor(steps=9600, dir_val=1, freq=250000)
+                    
+                    integer_y = 0
+                    
+                elif x_motor.Start.value() == 0 and start_stop_x == 1:
+                    
+                    x_motor_driver.stop_all()
+                    print("X_endstop stopped")
+                    start_stop_x = 0
+                    
+                elif y_motor.Start.value() == 0 and start_stop_y == 1:
+                    
+                    y_motor_driver.stop_all()
+                    print("Y_endstop stopped")
+                    start_stop_y = 0
+                    
+                #elif x_motor_driver.check_motors() == True and y_motor_driver.check_motors() == True and motor_finished == 1:
+                    #motor_finished = 0
+                    
+                elif utime.ticks_diff(now, start) >= 5000 and motor_finished == 1:
+                    uart_send("ERROR_IN_OPEN")
+                    motor_finished = 0
+                    
+                utime.sleep_ms(5)
+                
             x_motor_driver.stop_all()
             y_motor_driver.stop_all()
+            uart_send('MOTORS_DONE')
+            buffer.pop(0)
+            
+        
+        elif buffer and buffer[0] == 'CLOSE':
+            integer_x = 1
+            integer_y = 1
+            end_stop_x = 1
+            end_stop_y = 1
+            motor_finished = 1
+            
+            uart_send('Received_Command')
+            start = utime.ticks_ms()
+            while x_motor.End.value()==1 or y_motor.End.value() == 1:
+                now = utime.ticks_ms()
+                if integer_x == 1:
+                    x_motor_driver.move_motor(steps=9600, dir_val=0, freq=250000)
+                    integer_x = 0
+                elif integer_y == 1:
+                    y_motor_driver.move_motor(steps=9600, dir_val=0, freq=250000)
+                    integer_y = 0
+                elif x_motor.End.value() == 0 and end_stop_x == 1:
+                    
+                    x_motor_driver.stop_all()
+                    print("X_endstop stopped")
+                    end_stop_x = 0
+                    
+                elif y_motor.End.value() == 0 and end_stop_y == 1:
+                    
+                    y_motor_driver.stop_all()
+                    print("Y_endstop stopped")
+                    end_stop_y = 0
+                    
+                elif utime.ticks_diff(now, start) >= 5000 and motor_finished == 1:
+                    uart_send("ERROR_IN_CLOSE")
+                    motor_finished = 0
+                    
+                utime.sleep_ms(5)
+                
+            x_motor_driver.stop_all()
+            y_motor_driver.stop_all()
+            uart_send('MOTORS _DONE')
+            buffer.pop(0)
+        
+        elif  buffer and buffer[0] == 'STATE':
+            if x_motor.Start.value()==0 and y_motor.Start.value() == 0:
+                uart_send('STATE_OPEN')
+                
+            elif x_motor.End.value()==0 and y_motor.End.value() == 0:
+                uart_send('STATE_CLOSED')
+                
+            else:
+                uart_send('STATE_ERROR')
+                
             buffer.pop(0)
             
         elif  buffer and buffer[0] == '@WHO':
@@ -83,7 +177,7 @@ while True:
             buffer.pop(0)
             
         else:
-            uart_send('ERROR')
+            uart_send('ERROR_COMMAND')
             buffer.pop(0)
         
     #buffer= []
